@@ -3,6 +3,7 @@ import typing
 import html
 import hashlib
 import base64
+from . import totp
 
 from flask import Flask, redirect, request, url_for, session
 
@@ -95,6 +96,7 @@ def create_app():
         response = "<ul>" + "".join(
             [
                 f"<li>Username: {html.escape(item['username'])}. Purpose: {html.escape(item['purpose'])}. Password: {html.escape(item['password'])}. TOTP Secret: {html.escape(item['totp_secret'])}."
+                + f"TOTP Token: {html.escape(totp.totp(item['totp_secret']))}."
                 + f'<a href="{html.escape(url_for("delete", username=item["username"]))}">Delete.</a></li>'
                 for item in secrets["passwords"]
             ]
