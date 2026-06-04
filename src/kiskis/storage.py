@@ -1,6 +1,7 @@
 import pathlib
 import base64
 import hashlib
+import copy
 
 import yaml
 from cryptography.fernet import Fernet
@@ -20,11 +21,10 @@ class Storage:
                 {
                     "username": "president_skroob",
                     "purpose": "luggage",
-                    "password": "12345",
-                    "totp_secret": "XWNCDM4GP4IXHIPM"
+                    "password": "12345"
                 },
-                {"username": "admin", "purpose": "admin", "password": "admin", "totp_secret": "KWW3QN64MV2F6FFP"},
-                {"username": "AzureDiamond", "purpose": "IRC", "password": "hunter2", "totp_secret": "BJ5MRK2FFKT2ET6H"},
+                {"username": "admin", "purpose": "admin", "password": "admin"},
+                {"username": "AzureDiamond", "purpose": "IRC", "password": "hunter2"},
             ]
         }
 
@@ -59,24 +59,26 @@ class Storage:
     def _encrypt_data(self, data: dict) -> dict:
         encrypted = {"passwords": []}
         for item in data.get("passwords", []):
-            encrypted_item = {
-                "username": item["username"],
-                "purpose": item["purpose"],
-                "password": self._encrypt_value(item["password"]),
-                "totp_secret": self._encrypt_value(item["totp_secret"]),
-            }
+            encrypted_item = copy.deepcopy(item)
+
+            if "password" in item.keys():
+                encrypted_item["password"] = self._encrypt_value(item["password"])
+            if "totp_secret" in item.keys():
+                encrypted_item["totp_secret"] = self._encrypt_value(item["totp_secret"])
+
             encrypted["passwords"].append(encrypted_item)
         return encrypted
 
     def _decrypt_data(self, data: dict) -> dict:
         decrypted = {"passwords": []}
         for item in data.get("passwords", []):
-            decrypted_item = {
-                "username": item["username"],
-                "purpose": item["purpose"],
-                "password": self._decrypt_value(item["password"]),
-                "totp_secret": self._decrypt_value(item["totp_secret"]),
-            }
+            decrypted_item = copy.deepcopy(item)
+
+            if "password" in item.keys():
+                decrypted_item["password"] = self._decrypt_value(item["password"])
+            if "totp_secret" in item.keys():
+                decrypted_item["totp_secret"] = self._decrypt_value(item["totp_secret"])
+
             decrypted["passwords"].append(decrypted_item)
         return decrypted
 

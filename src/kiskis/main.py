@@ -3,6 +3,7 @@ import typing
 import html
 import hashlib
 import base64
+import yaml
 from . import totp
 
 from flask import Flask, redirect, request, url_for, session
@@ -93,16 +94,19 @@ def create_app():
     def passwords():
         storage_ = get_storage()
         secrets: typing.Dict = storage_.data
-        response = "<ul>" + "".join(
-            [
-                f"<li>Username: {html.escape(item['username'])}. Purpose: {html.escape(item['purpose'])}. Password: {html.escape(item['password'])}. TOTP Secret: {html.escape(item['totp_secret'])}."
-                + f"TOTP Token: {html.escape(totp.totp(item['totp_secret']))}."
-                + f'<a href="{html.escape(url_for("delete", username=item["username"]))}">Delete.</a></li>'
-                for item in secrets["passwords"]
-            ]
-        )
+        response = "<ul>"
+        for item in secrets["passwords"]:
+            response += f"<li>Username: {html.escape(item['username'])}. Purpose: {html.escape(item['purpose'])}. "
+            if 'password' in item.keys():
+                response += f"Password: {html.escape(item['password'])}. "
+            if 'totp_secret' in item.keys():
+                response += f"TOTP Token: {html.escape(totp.totp(item['totp_secret'], time_step=item['period'], digits=item['digits'], digest=item['algorithm']))}. "
+            response += f'<a href="{html.escape(url_for("delete", username=item["username"]))}">Delete.</a></li>'
 
         response += f'<p><a href="{html.escape(url_for("prepare"))}">Add</a></p>'
+        response += f'<p><a href="{html.escape(url_for("import_uri"))}">Import TOTP URI</a></p>'
+        response += f'<p><a href="{html.escape(url_for("logout"))}">Logout</a></p>'
+
         return response
 
     @app.route("/passwords/prepare")
@@ -112,7 +116,6 @@ def create_app():
                 Username: <input type="text" name="username"><br/>
                 Purpose: <input type="text" name="purpose"><br/>
                 Password: <input type="text" name="password"><br/>
-                TOTP Secret: <input type="text" name="totp_secret"><br/>
                 <input type="submit" value="Add">
             </form>"""
 
@@ -123,11 +126,46 @@ def create_app():
             "username": request.values.get("username", ""),
             "purpose": request.values.get("purpose", ""),
             "password": request.values.get("password", ""),
-            "totp_secret": request.values.get("totp_secret", ""),
         }
         storage_.data["passwords"].append(record)
         storage_.save()
         return redirect("/passwords")
+
+    @app.route("/passwords/import_uri", methods=["GET", "POST"])
+    def import_uri():
+        if request.method == "POST":
+            uri = request.values.get("totp_uri", "")
+            path_part, query_part = uri.split('?', 1)
+            label = path_part.split('/')[-1]
+    
+            if ':' in label:
+                issuer, account = label.split(':', 1)
+            else:
+                issuer, account = "TOTP", label
+
+            yaml_str = query_part.replace('&', '\n').replace('=', ': ')
+            parsed_data = yaml.load(yaml_str, Loader=yaml.Loader)
+            
+            storage_ = get_storage()
+            storage_.data["passwords"].append({
+                "username": account,
+                "purpose": parsed_data.get("issuer", issuer),
+                "totp_secret": parsed_data.get("secret", ""),
+                "algorithm": parsed_data.get("algorithm", "SHA1"),
+                "digits": parsed_data.get("digits", 6),
+                "period": parsed_data.get("period", 30)
+            })
+            storage_.save()
+            return redirect("/passwords/")
+
+        # Import Form
+        return f"""
+            <form action="{html.escape(url_for("import_uri"))}" method="post">
+                TOTP URI (e.g., otpauth://totp/Service:User?secret=...): <br/>
+                <textarea rows="5" cols="80" name="totp_uri"></textarea><br/>
+                <input type="submit" value="Import">
+            </form>
+        """
 
     @app.route("/passwords/<username>/delete")
     def delete(username: str):
